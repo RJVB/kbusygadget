@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+    <file>icons/view-refresh-scalable.svg</file>
+    <file>icons/view-refresh-fixed.png</file>
+</qresource>
+</RCC>
