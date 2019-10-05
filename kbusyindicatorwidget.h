@@ -65,12 +65,20 @@ public:
 
     // RJVB
     /**
+     * Use an internal timer to control the animation, instead of QVariantAnimation.
+     * By default the timer runs at 60Hz.
+     */
+    void setUseInternalTimer(bool enabled);
+    bool useInternalTimer();
+
+    /**
      * use the scalable (svg) icon instead of the fixed-size (png) one.
      */
     void useScalable(bool enabled);
     bool scalable();
     /**
-     * configure a delay (in microseconds) between animation frames
+     * configure a delay (in microseconds) between animation frames; also
+     * defines the internal timer's interval time.
      */
     void setFreezeDuration(int ms);
     int freezeDuration();

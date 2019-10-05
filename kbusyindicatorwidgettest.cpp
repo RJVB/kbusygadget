@@ -49,7 +49,8 @@ public:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    int freezeDuration = 250;
+    // by default animations run at 60Hz
+    int freezeDuration = 1000/60;
     QCommandLineParser parser;
     parser.addHelpOption();
     const QCommandLineOption freezeOption(QStringLiteral("freezeDuration"),
@@ -85,14 +86,19 @@ int main(int argc, char **argv)
     auto scalable = new KButton(QStringLiteral("Scalable"), busyIndicator->scalable(), &window);
     scalable->setToolTip(QStringLiteral("Use a scalable (svg) or fixed (png) icon"));
 
-    auto freeze = new KButton(QStringLiteral("Freeze"), busyIndicator->freezeDuration() > 0, &window);
-    freeze->setToolTip(QStringLiteral("Freeze the animation for %1ms between frames").arg(freezeDuration));
+    auto freeze = new KButton(QStringLiteral("Limit"), busyIndicator->freezeDuration() > 0, &window);
+    freeze->setToolTip(QStringLiteral(
+        "Force the animation interval time to %1ms between frames (= the interval time in \"Simple\" mode)").arg(freezeDuration));
     auto fslider = new QSlider(Qt::Horizontal, &window);
-    fslider->setRange(0, 1000);
+    // there's a toggle to activate freeze timing so start the slider at 1ms
+    fslider->setRange(1, 1000);
     fslider->setValue(freezeDuration);
 
     auto bogus = new KButton(QStringLiteral("Bogus"), busyIndicator->bogus(), &window);
     bogus->setToolTip(QStringLiteral("Run bogus animation loop"));
+
+    auto intTimer = new KButton(QStringLiteral("Simple"), busyIndicator->useInternalTimer(), &window);
+    intTimer->setToolTip(QStringLiteral("Use a simple internal timer instead of QVariantAnimation"));
 
     QObject::connect(toggle, &KButton::clicked,
             busyWidget, [=] {
@@ -123,7 +129,10 @@ int main(int argc, char **argv)
             freeze->setToolTip(QStringLiteral("Freeze the animation for %1ms between frames").arg(freezeDuration));
             if (freeze->isChecked()) {
                 busyIndicator->setFreezeDuration(freezeDuration);
-                qWarning() << "Freezing" << freezeDuration << "between frames";
+                qWarning() << "Freezing" << freezeDuration << "ms between frames";
+            } else if (intTimer->isChecked()) {
+                busyIndicator->setFreezeDuration(freezeDuration);
+                qWarning() << "Interval time now" << freezeDuration << "ms";
             } else {
                 busyIndicator->setFreezeDuration(0);
             }
@@ -133,11 +142,22 @@ int main(int argc, char **argv)
             busyWidget, [=](bool checked) {
         busyIndicator->setBogus(checked);
     });
+    QObject::connect(intTimer, &KButton::toggled,
+            busyWidget, [=](bool checked) {
+        busyIndicator->setUseInternalTimer(checked);
+        auto dt = freeze->isChecked()? fslider->value() : 0;
+        if (dt) {
+            busyIndicator->setFreezeDuration(dt);
+        } else {
+            busyIndicator->setFreezeDuration(0);
+        }
+    });
 
     buttons->addWidget(toggle);
     buttons->addWidget(scalable);
     buttons->addWidget(freeze);
     buttons->addWidget(bogus);
+    buttons->addWidget(intTimer);
     layout->addLayout(buttons);
     layout->addWidget(fslider);
     layout->addWidget(busyWidget);

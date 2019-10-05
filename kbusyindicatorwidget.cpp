@@ -26,6 +26,8 @@
 #include <QResizeEvent>
 #include <QStyle>
 #include <QVariantAnimation>
+#include <QTimer>
+#include <QElapsedTimer>
 
 #include <QThread>
 
@@ -37,8 +39,10 @@ public:
     KBusyIndicatorWidgetPrivate(KBusyIndicatorWidget *parent)
         : q(parent)
     {
+        // duration in milliseconds:
+        const int durationMs = 2000;
         animation.setLoopCount(-1);
-        animation.setDuration(2000);
+        animation.setDuration(durationMs);
         animation.setStartValue(0);
         animation.setEndValue(360);
         QObject::connect(&animation, &QVariantAnimation::valueChanged,
@@ -49,9 +53,30 @@ public:
                 animation.thread()->msleep(freezeDuration);
             }
         });
+
+        if (freezeDuration) {
+            aniTimer.setInterval(freezeDuration);
+        } else {
+            aniTimer.setInterval(1000/frequency);
+        }
+        QObject::connect(&aniTimer, &QTimer::timeout,
+                q, [=]() {
+            q->update(); // repaint new rotation
+            // use the actual dt instead of the programmed dt
+            // the conversion from ms to s is implicit through
+            // the unit of durationMs;
+            auto elapsed = aniTime.restart();
+            rotation += elapsed * 360.0 / durationMs;
+            if (rotation > 360) {
+                rotation -= 360;
+                qWarning() << "full turn after t=" << test.restart() / 1000.0;
+            }
+        });
+
     }
 
     KBusyIndicatorWidget *q = nullptr;
+    bool running = false;
     QVariantAnimation animation;
     QIcon fixedIcon = QIcon(QStringLiteral(":icons/view-refresh-fixed"));
     QIcon scalableIcon = QIcon(QStringLiteral(":icons/view-refresh-scalable"));
@@ -60,6 +85,10 @@ public:
     bool scalable = false;
     int freezeDuration = 0;
     bool bogus = false;
+    QTimer aniTimer;
+    int frequency = 60;
+    QElapsedTimer aniTime, test;
+    bool useInternalTimer = false;
 };
 
 KBusyIndicatorWidget::KBusyIndicatorWidget(QWidget *parent)
@@ -97,13 +126,26 @@ QSize KBusyIndicatorWidget::minimumSizeHint() const
 void KBusyIndicatorWidget::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
-    d->animation.start();
+    if (d->useInternalTimer) {
+        d->aniTimer.start();
+    } else {
+        d->animation.start();
+    }
+    d->aniTime.start();
+    d->test.start();
+    d->running = true;
 }
 
 void KBusyIndicatorWidget::hideEvent(QHideEvent *event)
 {
     QWidget::hideEvent(event);
-    d->animation.pause();
+    if (d->useInternalTimer) {
+        d->aniTimer.stop();
+    } else {
+        d->animation.pause();
+    }
+    d->aniTime.invalidate();
+    d->running = false;
 }
 
 void KBusyIndicatorWidget::resizeEvent(QResizeEvent *event)
@@ -142,6 +184,26 @@ bool KBusyIndicatorWidget::event(QEvent *event)
     return QWidget::event(event);
 }
 
+void KBusyIndicatorWidget::setUseInternalTimer(bool enabled)
+{
+    if (enabled != d->useInternalTimer && d->running) {
+        // just stop both
+        d->aniTimer.stop();
+        d->animation.stop();
+        if (enabled) {
+            d->aniTimer.start();
+        } else {
+            d->animation.start();
+        }
+    }
+    d->useInternalTimer = enabled;
+}
+
+bool KBusyIndicatorWidget::useInternalTimer()
+{
+    return d->useInternalTimer;
+}
+
 void KBusyIndicatorWidget::useScalable(bool enabled)
 {
     d->scalable = enabled;
@@ -155,6 +217,11 @@ bool KBusyIndicatorWidget::scalable()
 void KBusyIndicatorWidget::setFreezeDuration(int ms)
 {
     d->freezeDuration = ms >= 0 ? ms : 0;
+    if (d->freezeDuration) {
+        d->aniTimer.setInterval(d->freezeDuration);
+    } else {
+        d->aniTimer.setInterval(1000/60);
+    }
 }
 
 int KBusyIndicatorWidget::freezeDuration()
